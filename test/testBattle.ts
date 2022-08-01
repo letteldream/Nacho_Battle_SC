@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { BigNumber } from 'ethers'
 import { parseUnits } from 'ethers/lib/utils'
 import { deployments, ethers, network } from 'hardhat'
-import { MaticWETH, Tomb, TBond, Luchador, Trainer, Battle } from '../typechain'
+import { MaticWETH, Tomb, TBond, Luchador, Trainer, Battle, VRFCoordinatorMock } from '../typechain'
 
 describe('Battle Game', () => {
   let deployer: SignerWithAddress,
@@ -18,23 +18,10 @@ describe('Battle Game', () => {
   let luchador: Luchador
   // let trainer: Trainer
   let battle: Battle
+  let vrfCoordinatorMock: VRFCoordinatorMock
 
-  let snapId: string
-  beforeEach(async () => {
-    snapId = (await network.provider.request({
-      method: 'evm_snapshot',
-      params: [],
-    })) as string
-    await ethers.provider.send('evm_mine', [])
-  })
-
-  afterEach(async () => {
-    await network.provider.request({
-      method: 'evm_revert',
-      params: [snapId],
-    })
-    await ethers.provider.send('evm_mine', [])
-  })
+  const subScriptionId = 1
+  const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000'
 
   before(async () => {
     ;[deployer, register1, register2, spectator1, spectator2, multisig] = await ethers.getSigners()
@@ -65,9 +52,20 @@ describe('Battle Game', () => {
       log: true,
     })
     luchador = await ethers.getContractAt('Luchador', receipt.address)
+
+    receipt = await deployments.deploy('VRFCoordinatorMock', {
+      from: deployer.address,
+      args: [],
+      log: true,
+    })
+
+    vrfCoordinatorMock = await ethers.getContractAt('VRFCoordinatorMock', receipt.address)
+    await vrfCoordinatorMock.createSubscription()
+    await vrfCoordinatorMock.fundSubscription(subScriptionId, ethers.utils.parseUnits('10'))
+
     receipt = await deployments.deploy('Battle', {
       from: deployer.address,
-      args: [nacho.address, nbond.address, luchador.address],
+      args: [nacho.address, nbond.address, luchador.address, vrfCoordinatorMock.address, ZERO_BYTES32, subScriptionId],
       log: true,
     })
     battle = await ethers.getContractAt('Battle', receipt.address)
@@ -77,6 +75,12 @@ describe('Battle Game', () => {
   })
 
   describe('Initialize', () => {
+    it('VRF initialization', async () => {
+      const subscription = await vrfCoordinatorMock.getSubscription(subScriptionId)
+      expect(subscription.owner).to.equal(deployer.address)
+      expect(subscription.balance.eq(ethers.utils.parseUnits('10'))).to.equal(true)
+      // expect(subscription.reqCount.eq(0)).to.equal(true)
+    })
     it('Mint Nacho & Nbond', async () => {
       await nacho.mint(register1.address, ethers.utils.parseEther('1000000'))
       await nacho.mint(register2.address, ethers.utils.parseEther('1000000'))
@@ -89,18 +93,9 @@ describe('Battle Game', () => {
       await weth.transfer(register2.address, ethers.utils.parseEther('1000000'))
     })
     it('Mint Luchador NFT', async () => {
-      await luchador.addTokenURI('1')
-      await luchador.addTokenURI('2')
-      await luchador.addTokenURI('3')
-      await luchador.addTokenURI('4')
-      await luchador.addTokenURI('5')
-      await luchador.addTokenURI('6')
-      await luchador.addTokenURI('7')
-      await luchador.addTokenURI('8')
-      await luchador.addTokenURI('9')
-      await luchador.addTokenURI('10')
-      await luchador.addTokenURI('11')
-      await luchador.addTokenURI('12')
+      for (let i = 0; i < 12; i++) {
+        await luchador.addTokenURI((i + 1).toString())
+      }
 
       await weth.connect(register1).approve(luchador.address, ethers.utils.parseEther('400'))
       await weth.connect(register2).approve(luchador.address, ethers.utils.parseEther('400'))
@@ -137,6 +132,24 @@ describe('Battle Game', () => {
     })
     it('Fight Versus Battle', async () => {
       await battle.fightVersusBattle()
+      // let versusRoomResult = await battle.versusRoomResult(0)
+      // console.log('versusRoomResult1', versusRoomResult)
+      // versusRoomResult = await battle.versusRoomResult(1)
+
+      // let versusRoomRoundResult = await battle.versusRoomRoundResult(0, 0)
+      // console.log('versusRoomRoundResult1', versusRoomRoundResult)
+    })
+    it('fullfillRandomWords', async () => {
+      const latestRequestId = await battle.latestRequestId()
+      console.log('latestRequestId: ', latestRequestId.toString())
+
+      await vrfCoordinatorMock.fulfillRandomWords(latestRequestId, battle.address, {
+        gasLimit: 200000,
+      })
+    })
+    it('viewRandomResult', async () => {
+      let diceResult = await battle.diceResult()
+      console.log('diceResult', diceResult)
       let versusRoomResult = await battle.versusRoomResult(0)
       console.log('versusRoomResult1', versusRoomResult)
       versusRoomResult = await battle.versusRoomResult(1)

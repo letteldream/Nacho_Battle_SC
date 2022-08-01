@@ -31,9 +31,9 @@ const config: HardhatUserConfig = {
       url: 'http://127.0.0.1:8545',
     },
     hardhat: {
-      forking: {
-        url: "https://rinkeby.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
-      },
+      // forking: {
+      //   url: "https://rinkeby.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
+      // },
     },
     polygon: {
       url: 'https://matic-mainnet.chainstacklabs.com/',

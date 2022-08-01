@@ -80,37 +80,33 @@ contract Battle is Ownable, VRFConsumerBaseV2 {
   uint256[2][6] public wagerTotalAmount;
 
   /// Random Number Vairable
-  mapping(uint256 => address) private rollRequests;
-  mapping(uint256 => uint256) private rollRewardRates;
+  uint256 public latestRequestId;
+  uint256 public diceResult = 2;
 
   /// @notice Chainlink variable for get random number
   VRFCoordinatorV2Interface public COORDINATOR;
-  address vrfCoordinator = 0x6168499c0cFfCaCD319c818142124B7A15E857ab;
-  bytes32 public keyHash = 0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc;
+  bytes32 public keyHash;
   uint32 public callbackGasLimit = 200000;
-  uint32 public constant numWords = 5;
-  uint16 public requestConfirmations = 3;
+  uint32 public constant numWords = 1;
+  uint16 public requestConfirmations = 1;
   uint64 public subscriptionId;
 
   /** ------------ Constructor ----------- */
   constructor(
     address _nachoToken,
     address _nbondToken,
-    address _luchadorAddr
-  )
-    // address _vrfCoordinator, // 0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed
-    // bytes32 _keyHash, // 0x4b09e658ed251bcafeebbc69400383d49f344ace09b9576fe248bb02c003fe9f
-    // uint64 _subscriptionId // 1175
-    VRFConsumerBaseV2(vrfCoordinator)
-  {
+    address _luchadorAddr,
+    address _vrfCoordinator, // 0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed
+    bytes32 _keyHash, // 0x4b09e658ed251bcafeebbc69400383d49f344ace09b9576fe248bb02c003fe9f
+    uint64 _subscriptionId // 1175
+  ) VRFConsumerBaseV2(_vrfCoordinator) {
     luchador = Luchador(_luchadorAddr);
     nachoToken = IERC20(_nachoToken);
     nbondToken = IERC20(_nbondToken);
 
-    COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
-    subscriptionId = 9381;
-    // keyHash = _keyHash;
-    // subscriptionId = _subscriptionId;
+    COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
+    keyHash = _keyHash;
+    subscriptionId = _subscriptionId;
   }
 
   /* ========== MUTATIVE FUNCTIONS - register ========== */
@@ -146,12 +142,9 @@ contract Battle is Ownable, VRFConsumerBaseV2 {
     //   require(versusFighters[roomId][0] != 0 && versusFighters[roomId][1] != 0, "Not Fully Registered");
     // }
 
-    // versusGameStatus == GameStatus.Registered;
-    uint256 requestID = getRandomNumber();
-    rollRequests[requestID] = msg.sender;
+    latestRequestId = getRandomNumber();
 
-    emit DiceRolled(requestID);
-    // rollRewardRates[requestID] = rewardRate;
+    emit DiceRolled(latestRequestId);
 
     // earnSpectaterWager();
   }
@@ -232,7 +225,8 @@ contract Battle is Ownable, VRFConsumerBaseV2 {
   /* ========== INTERNALS ========== */
 
   function getRandomNumber() public returns (uint256 requestID) {
-    require(keyHash != bytes32(0), "Must have valid key hash");
+    // No need to do in Mock
+    // require(keyHash != bytes32(0), "Must have valid key hash");
 
     requestID = COORDINATOR.requestRandomWords(keyHash, subscriptionId, requestConfirmations, callbackGasLimit, numWords);
   }
@@ -241,18 +235,17 @@ contract Battle is Ownable, VRFConsumerBaseV2 {
    * @notice Callback function used by ChainLink's VRF v2 Coordinator
    */
   function fulfillRandomWords(uint256 requestId, uint256[] memory randomNumber) internal override {
-    emit DiceLanded(requestId, randomNumber);
+    require(latestRequestId == requestId, "RNG: wrong requestId");
+    diceResult = 1;
+
     uint8 roundId;
     uint8 playerId;
     uint256[20][2] memory playerAttributes;
     uint256[2] memory roundMax;
-    uint256[2] memory randomNumber;
 
     for (uint8 roomId = 0; roomId < 6; roomId++) {
       uint8 _versusRoomResult = 10;
       for (roundId = 0; roundId < 7; roundId++) {
-        // randomNumber[0] = roundId + 14;
-        // randomNumber[1] = roundId + 16;
         if (randomNumber[0] == CRITICAL_DICE_WIN || randomNumber[1] == CRITICAL_DICE_LOSE) {
           versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinFirst;
           _versusRoomResult += 1;
