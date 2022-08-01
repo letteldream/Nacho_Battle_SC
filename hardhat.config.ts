@@ -30,7 +30,11 @@ const config: HardhatUserConfig = {
     localhost: {
       url: 'http://127.0.0.1:8545',
     },
-    hardhat: {},
+    hardhat: {
+      forking: {
+        url: "https://rinkeby.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
+      },
+    },
     polygon: {
       url: 'https://matic-mainnet.chainstacklabs.com/',
       gas: 8000000,
@@ -50,6 +54,12 @@ const config: HardhatUserConfig = {
       gasPrice: 26000000000,
       accounts: process.env.Memonic !== undefined ? [process.env.Memonic] : [],
     },
+    rinkeby: {
+      url: 'https://rinkeby.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+      gas: 8000000,
+      chainId: 4,
+      accounts: process.env.Memonic !== undefined ? [process.env.Memonic] : [],
+    },
   },
   gasReporter: {
     enabled: process.env.REPORT_GAS !== undefined,
@@ -57,6 +67,7 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
+      rinkeby: 'XFAGSFB6UXE9MFTA9AHJMGHMXI8IXRVCHW',
       avalancheFujiTestnet: 'WN8CWW97AHIYUBC665Y4HZ4E5V4GUJZR2Y',
       polygon: 'UAPMUQ8M3UDIFBIUUZJC6ZYDPYW3D4GTPK',
       polygonMumbai: 'UAPMUQ8M3UDIFBIUUZJC6ZYDPYW3D4GTPK',

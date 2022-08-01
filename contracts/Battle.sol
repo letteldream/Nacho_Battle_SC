@@ -5,15 +5,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 // import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-
-// import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
-import "@chainlink/contracts/src/v0.8/mocks/VRFCoordinatorV2Mock.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "./Luchador.sol";
 
 contract Battle is Ownable, VRFConsumerBaseV2 {
   using SafeMath for uint256;
   using SafeMath for uint8;
+
+  /** ------------- Events ------------- */
+
+  event DiceRolled(uint256 indexed requestId);
+  event DiceLanded(uint256 indexed requestId, uint256[] indexed result);
 
   uint256 private constant ROLL_IN_PROGRESS = 42;
   /** ------------- Constants ------------- */
@@ -77,33 +80,37 @@ contract Battle is Ownable, VRFConsumerBaseV2 {
   uint256[2][6] public wagerTotalAmount;
 
   /// Random Number Vairable
-  mapping(uint256 => address) private s_rollers;
-  mapping(address => uint256) private s_results;
+  mapping(uint256 => address) private rollRequests;
+  mapping(uint256 => uint256) private rollRewardRates;
 
   /// @notice Chainlink variable for get random number
-  VRFCoordinatorV2Interface public coordinator = VRFCoordinatorV2Interface(0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed);
-  uint64 public subscriptionId = 1175;
-  bytes32 public keyHash = 0x4b09e658ed251bcafeebbc69400383d49f344ace09b9576fe248bb02c003fe9f;
+  VRFCoordinatorV2Interface public COORDINATOR;
+  address vrfCoordinator = 0x6168499c0cFfCaCD319c818142124B7A15E857ab;
+  bytes32 public keyHash = 0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc;
   uint32 public callbackGasLimit = 200000;
-  uint16 public requestConfirmations = 3;
   uint32 public constant numWords = 5;
+  uint16 public requestConfirmations = 3;
+  uint64 public subscriptionId;
 
   /** ------------ Constructor ----------- */
   constructor(
     address _nachoToken,
     address _nbondToken,
-    address _luchadorAddr,
-    address _vrfCoordinator, // 0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed
-    bytes32 _keyHash, // 0x4b09e658ed251bcafeebbc69400383d49f344ace09b9576fe248bb02c003fe9f
-    uint64 _subscriptionId // 1175
-  ) VRFConsumerBaseV2(_vrfCoordinator) {
+    address _luchadorAddr
+  )
+    // address _vrfCoordinator, // 0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed
+    // bytes32 _keyHash, // 0x4b09e658ed251bcafeebbc69400383d49f344ace09b9576fe248bb02c003fe9f
+    // uint64 _subscriptionId // 1175
+    VRFConsumerBaseV2(vrfCoordinator)
+  {
     luchador = Luchador(_luchadorAddr);
     nachoToken = IERC20(_nachoToken);
     nbondToken = IERC20(_nbondToken);
 
-    coordinator = VRFCoordinatorV2Interface(_vrfCoordinator);
-    keyHash = _keyHash;
-    subscriptionId = _subscriptionId;
+    COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
+    subscriptionId = 9381;
+    // keyHash = _keyHash;
+    // subscriptionId = _subscriptionId;
   }
 
   /* ========== MUTATIVE FUNCTIONS - register ========== */
@@ -135,58 +142,17 @@ contract Battle is Ownable, VRFConsumerBaseV2 {
 
   function fightVersusBattle() public onlyOwner {
     // Check if Versus battle is started
-    for (uint8 roomId = 0; roomId < 6; roomId++) {
-      require(versusFighters[roomId][0] != 0 && versusFighters[roomId][1] != 0, "Not Fully Registered");
-    }
+    // for (uint8 roomId = 0; roomId < 6; roomId++) {
+    //   require(versusFighters[roomId][0] != 0 && versusFighters[roomId][1] != 0, "Not Fully Registered");
+    // }
 
     // versusGameStatus == GameStatus.Registered;
+    uint256 requestID = getRandomNumber();
+    rollRequests[requestID] = msg.sender;
 
-    uint8 roundId;
-    uint8 playerId;
-    uint256[20][2] memory playerAttributes;
-    uint256[2] memory roundMax;
-    uint256[2] memory randomNumber;
+    emit DiceRolled(requestID);
+    // rollRewardRates[requestID] = rewardRate;
 
-    for (uint8 roomId = 0; roomId < 6; roomId++) {
-      uint8 _versusRoomResult = 10;
-      for (roundId = 0; roundId < 7; roundId++) {
-        // randomNumber[0] = getRandomNumber();
-        // randomNumber[1] = getRandomNumber();
-
-        // randomNumber[0] = roundId + 14;
-        // randomNumber[1] = roundId + 16;
-        if (randomNumber[0] == CRITICAL_DICE_WIN || randomNumber[1] == CRITICAL_DICE_LOSE) {
-          versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinFirst;
-          _versusRoomResult += 1;
-        } else if (randomNumber[0] == CRITICAL_DICE_LOSE || randomNumber[1] == CRITICAL_DICE_WIN) {
-          versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinSecond;
-          _versusRoomResult -= 1;
-        } else {
-          for (playerId = 0; playerId < 2; playerId++) {
-            playerAttributes[playerId] = luchador.getAllLuchadorAttributes(versusFighters[roomId][playerId]);
-            roundMax[playerId] =
-              (playerAttributes[playerId][0] + 1) *
-              (playerAttributes[playerId][1] + 1) *
-              (playerAttributes[playerId][2] + 1) *
-              randomNumber[playerId];
-          }
-
-          if (roundMax[0] > roundMax[1]) {
-            versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinFirst;
-            _versusRoomResult += 1;
-          } else if (roundMax[0] < roundMax[1]) {
-            versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinSecond;
-            _versusRoomResult -= 1;
-          } else {
-            versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.Tie;
-          }
-        }
-        if (_versusRoomResult > 10) versusRoomResult[roomId] = VersusRoundStatus.WinFirst;
-        else if (_versusRoomResult < 10) versusRoomResult[roomId] = VersusRoundStatus.WinSecond;
-        else versusRoomResult[roomId] = VersusRoundStatus.Tie;
-      }
-    }
-    versusGameStatus = GameStatus.Finished;
     // earnSpectaterWager();
   }
 
@@ -265,21 +231,59 @@ contract Battle is Ownable, VRFConsumerBaseV2 {
 
   /* ========== INTERNALS ========== */
 
-  function getRandomNumber(address roller) public returns (uint256 requestID) {
+  function getRandomNumber() public returns (uint256 requestID) {
     require(keyHash != bytes32(0), "Must have valid key hash");
 
-    requestID = coordinator.requestRandomWords(keyHash, subscriptionId, requestConfirmations, callbackGasLimit, numWords);
-    s_rollers[requestID] = roller;
-    s_results[roller] = ROLL_IN_PROGRESS;
-    // emit DiceRolled(requestId, roller);
-
-    require(keyHash != bytes32(0), "Must have valid key hash");
-
-    requestID = coordinator.requestRandomWords(keyHash, subscriptionId, requestConfirmations, callbackGasLimit, numWords);
+    requestID = COORDINATOR.requestRandomWords(keyHash, subscriptionId, requestConfirmations, callbackGasLimit, numWords);
   }
 
   /**
    * @notice Callback function used by ChainLink's VRF v2 Coordinator
    */
-  function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {}
+  function fulfillRandomWords(uint256 requestId, uint256[] memory randomNumber) internal override {
+    emit DiceLanded(requestId, randomNumber);
+    uint8 roundId;
+    uint8 playerId;
+    uint256[20][2] memory playerAttributes;
+    uint256[2] memory roundMax;
+    uint256[2] memory randomNumber;
+
+    for (uint8 roomId = 0; roomId < 6; roomId++) {
+      uint8 _versusRoomResult = 10;
+      for (roundId = 0; roundId < 7; roundId++) {
+        // randomNumber[0] = roundId + 14;
+        // randomNumber[1] = roundId + 16;
+        if (randomNumber[0] == CRITICAL_DICE_WIN || randomNumber[1] == CRITICAL_DICE_LOSE) {
+          versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinFirst;
+          _versusRoomResult += 1;
+        } else if (randomNumber[0] == CRITICAL_DICE_LOSE || randomNumber[1] == CRITICAL_DICE_WIN) {
+          versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinSecond;
+          _versusRoomResult -= 1;
+        } else {
+          for (playerId = 0; playerId < 2; playerId++) {
+            playerAttributes[playerId] = luchador.getAllLuchadorAttributes(versusFighters[roomId][playerId]);
+            roundMax[playerId] =
+              (playerAttributes[playerId][0] + 1) *
+              (playerAttributes[playerId][1] + 1) *
+              (playerAttributes[playerId][2] + 1) *
+              randomNumber[playerId];
+          }
+
+          if (roundMax[0] > roundMax[1]) {
+            versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinFirst;
+            _versusRoomResult += 1;
+          } else if (roundMax[0] < roundMax[1]) {
+            versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.WinSecond;
+            _versusRoomResult -= 1;
+          } else {
+            versusRoomRoundResult[roomId][roundId] = VersusRoundStatus.Tie;
+          }
+        }
+        if (_versusRoomResult > 10) versusRoomResult[roomId] = VersusRoundStatus.WinFirst;
+        else if (_versusRoomResult < 10) versusRoomResult[roomId] = VersusRoundStatus.WinSecond;
+        else versusRoomResult[roomId] = VersusRoundStatus.Tie;
+      }
+    }
+    versusGameStatus = GameStatus.Finished;
+  }
 }

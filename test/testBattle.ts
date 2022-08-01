@@ -19,6 +19,23 @@ describe('Battle Game', () => {
   // let trainer: Trainer
   let battle: Battle
 
+  let snapId: string
+  beforeEach(async () => {
+    snapId = (await network.provider.request({
+      method: 'evm_snapshot',
+      params: [],
+    })) as string
+    await ethers.provider.send('evm_mine', [])
+  })
+
+  afterEach(async () => {
+    await network.provider.request({
+      method: 'evm_revert',
+      params: [snapId],
+    })
+    await ethers.provider.send('evm_mine', [])
+  })
+
   before(async () => {
     ;[deployer, register1, register2, spectator1, spectator2, multisig] = await ethers.getSigners()
 
